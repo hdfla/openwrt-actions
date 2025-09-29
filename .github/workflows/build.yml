@@ -1,0 +1,261 @@
+name: Build image
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      BOARD_LIST:
+        description: 'Space‑separated board names (e.g. coral reef dell_optiplex_9010_sff). Leave empty to build all.'
+        required: false
+        type: string
+        default: ''
+      BUILD_TYPE_FOR_PC:
+        description: 'Build method for PC boards (ignored for Chromebooks)'
+        required: true
+        default: 'generic'
+        type: choice
+        options:
+          - generic
+          - mrchromebox
+      MRCHROMEBOX_BRANCH:
+        description: 'MrChromebox branch (empty = default)'
+        required: false
+        type: string
+        default: ''
+      UPSTREAM_BRANCH:
+        description: 'Upstream coreboot branch (empty = default)'
+        required: false
+        type: string
+        default: ''
+      CUSTOM_LOGO_BMP:
+        description: 'Custom coreboot_logo.bmp (optional)'
+        required: false
+        default: 'logo.bmp'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone MrChromebox (optional branch)
+        run: |
+          if [ -n "${{ github.event.inputs.MRCHROMEBOX_BRANCH }}" ]; then
+            git clone --recursive https://github.com/MrChromebox/coreboot.git -b ${{ github.event.inputs.MRCHROMEBOX_BRANCH }} mrchromebox
+          else
+            git clone --recursive https://github.com/MrChromebox/coreboot.git mrchromebox
+          fi
+
+      - name: Build matrix
+        id: set-matrix
+        run: |
+          set -e
+          BOARD_MAP=()
+
+          for file in mrchromebox/configs/*/config.*.uefi; do
+            if [ -f "$file" ]; then
+              board=$(basename "$file" .uefi | cut -d'.' -f2)
+              BOARD_MAP+=("{\"board\":\"$board\", \"build_type\":\"mrchromebox\", \"variant\":\"uefi\", \"is_chromebook\":true, \"config_b64\":\"$(base64 -w0 "$file")\"}")
+            fi
+          done
+
+          declare -A pc_boards
+          for file in mrchromebox/configs/config.*; do
+            if [ -f "$file" ]; then
+              base=$(basename "$file")
+              board="${base#config.}"
+              board="${board%.uefi}"
+              pc_boards["$board"]=1
+            fi
+          done
+
+          for board in "${!pc_boards[@]}"; do
+            build_type="${{ github.event.inputs.BUILD_TYPE_FOR_PC }}"
+            if [ -f "mrchromebox/configs/config.${board}" ]; then
+              BOARD_MAP+=("{\"board\":\"$board\", \"build_type\":\"$build_type\", \"variant\":\"\", \"is_chromebook\":false, \"config_b64\":\"$(base64 -w0 "mrchromebox/configs/config.${board}")\"}")
+            fi
+            if [ -f "mrchromebox/configs/config.${board}.uefi" ]; then
+              BOARD_MAP+=("{\"board\":\"$board\", \"build_type\":\"$build_type\", \"variant\":\"uefi\", \"is_chromebook\":false, \"config_b64\":\"$(base64 -w0 "mrchromebox/configs/config.${board}.uefi")\"}")
+            fi
+          done
+
+          USER_BOARDS="${{ github.event.inputs.BOARD_LIST }}"
+          if [ -n "$USER_BOARDS" ]; then
+            read -ra USER_ARRAY <<< "$USER_BOARDS"
+            FILTERED=()
+            for entry in "${BOARD_MAP[@]}"; do
+              board=$(echo "$entry" | jq -r '.board')
+              if [[ " ${USER_ARRAY[@]} " =~ " $board " ]]; then
+                FILTERED+=("$entry")
+              fi
+            done
+            for user_board in "${USER_ARRAY[@]}"; do
+              found=false
+              for entry in "${FILTERED[@]}"; do
+                if [ "$(echo "$entry" | jq -r '.board')" = "$user_board" ]; then
+                  found=true
+                  break
+                fi
+              done
+              if [ "$found" = false ]; then
+                echo "Board '$user_board' not found. Using default config."
+                build_type="${{ github.event.inputs.BUILD_TYPE_FOR_PC }}"
+                FILTERED+=("{\"board\":\"$user_board\", \"build_type\":\"$build_type\", \"variant\":\"\", \"is_chromebook\":false, \"config_b64\":\"\"}")
+              fi
+            done
+            BOARD_MAP=("${FILTERED[@]}")
+          fi
+
+          if [ ${#BOARD_MAP[@]} -eq 0 ]; then
+            echo "No boards to build."
+            exit 1
+          fi
+
+          echo "matrix={\"include\":[$(IFS=,; echo "${BOARD_MAP[*]}")]}" >> $GITHUB_OUTPUT
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      REPO_URL: ${{ matrix.build_type == 'mrchromebox' && 'https://github.com/MrChromebox/coreboot.git' || 'https://review.coreboot.org/coreboot.git' }}
+      REPO_BRANCH: ${{ matrix.build_type == 'mrchromebox' && github.event.inputs.MRCHROMEBOX_BRANCH || github.event.inputs.UPSTREAM_BRANCH }}
+      BOARD: ${{ matrix.board }}
+      BUILD_TYPE: ${{ matrix.build_type }}
+      VARIANT: ${{ matrix.variant }}
+      IS_CHROMEBOOK: ${{ matrix.is_chromebook }}
+      CONFIG_B64: ${{ matrix.config_b64 }}
+      TZ: Asia/Ho_Chi_Minh
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install \
+            bison build-essential curl flex git gnat imagemagick \
+            libncurses-dev libssl-dev zlib1g-dev pkgconf python-is-python3 \
+            m4 nasm uuid-dev gcc-multilib gawk gettext wget unzip grep rsync \
+            python3 python3-pip python3-setuptools python3-wheel python3-yaml \
+            cmake doxygen help2man libflashrom-dev \
+            libglib2.0-dev libpci-dev libusb-1.0-0-dev
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          if [ "${{ matrix.build_type }}" = "generic" ]; then
+            sudo mkdir -p /workdir
+            sudo chown $USER:$GROUPS /workdir
+          fi
+
+      - name: Clone coreboot
+        run: |
+          set -e
+          if [ "${{ matrix.build_type }}" = "generic" ]; then
+            cd /workdir
+            if [ -n "$REPO_BRANCH" ]; then
+              git clone --recursive --depth=1 $REPO_URL -b $REPO_BRANCH coreboot || git clone --recursive $REPO_URL -b $REPO_BRANCH coreboot
+            else
+              git clone --recursive --depth=1 $REPO_URL coreboot || git clone --recursive $REPO_URL coreboot
+            fi
+            ln -sf /workdir/coreboot $GITHUB_WORKSPACE/coreboot
+          else
+            if [ -n "$REPO_BRANCH" ]; then
+              git clone --recursive $REPO_URL -b $REPO_BRANCH coreboot
+            else
+              git clone --recursive $REPO_URL coreboot
+            fi
+          fi
+
+      - name: Apply board config
+        if: env.CONFIG_B64 != ''
+        run: |
+          cd coreboot
+          echo "${{ env.CONFIG_B64 }}" | base64 -d > .config
+          make olddefconfig
+
+      - name: Use default config
+        if: env.CONFIG_B64 == ''
+        run: |
+          cd coreboot
+          make distclean
+          make qemu-x86_defconfig
+
+      - name: Build toolchain
+        run: |
+          cd coreboot
+          if [ "${{ matrix.build_type }}" = "mrchromebox" ]; then
+            git submodule update --init --checkout --recursive
+            make crossgcc-i386 CPUS=$(nproc)
+          else
+            make crossgcc-i386
+          fi
+
+      - name: Apply custom logo
+        run: |
+          if [ -n "${{ github.event.inputs.CUSTOM_LOGO_BMP }}" ]; then
+            LOGO="${{ github.event.inputs.CUSTOM_LOGO_BMP }}"
+            if [ ! -f "$LOGO" ]; then
+              echo "Error: Custom logo file '$LOGO' not found."
+              exit 1
+            fi
+            cp "$LOGO" coreboot/Documentation/coreboot_logo.bmp
+            echo "Custom logo applied."
+          fi
+
+      - name: Build UEFI ROM (Chromebook)
+        if: matrix.is_chromebook
+        working-directory: coreboot
+        env:
+          BOARD_NAME: ${{ matrix.board }}
+        run: |
+          if [ -f "./build-uefi.sh" ]; then
+            ./build-uefi.sh "$BOARD_NAME"
+          else
+            make -j$(nproc)
+          fi
+
+      - name: Build with make (PC boards)
+        if: matrix.is_chromebook == false
+        working-directory: coreboot
+        run: make -j$(nproc) || make -j1 V=1
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          if [ "${{ matrix.is_chromebook }}" = "true" ]; then
+            ROM_FILE=$(ls -1t /home/runner/dev/roms/coreboot_edk2-${{ matrix.board }}-mrchromebox_*.rom 2>/dev/null | head -n1)
+            if [ -z "$ROM_FILE" ] || [ ! -f "$ROM_FILE" ]; then
+              ROM_FILE=$(ls -1t /home/runner/work/coreboot-actions/coreboot-actions/roms/coreboot_edk2-${{ matrix.board }}-mrchromebox_*.rom 2>/dev/null | head -n1)
+            fi
+            [ -z "$ROM_FILE" ] && ROM_FILE="coreboot/build/coreboot.rom"
+          else
+            ROM_FILE="coreboot/build/coreboot.rom"
+            if [ ! -f "$ROM_FILE" ]; then
+              ROM_FILE=$(find coreboot -name "*.rom" -type f | head -n1)
+            fi
+          fi
+          if [ -n "$ROM_FILE" ] && [ -f "$ROM_FILE" ]; then
+            cp "$ROM_FILE" artifacts/
+            [ -f "${ROM_FILE}.sha1" ] && cp "${ROM_FILE}.sha1" artifacts/
+          else
+            echo "No ROM found for board '${{ matrix.board }}'"
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.build_type }}_${{ matrix.board }}_${{ matrix.variant || 'default' }}_rom
+          path: artifacts/*

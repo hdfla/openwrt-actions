@@ -1,0 +1,8 @@
+https://github.com/torguardvpn/luci-app-easymesh.git
+https://github.com/hdfla/luci-app-gecoosac.git
+https://github.com/hdfla/apcontroller.git
+https://github.com/f8q8/luci-app-autoreboot.git
+https://github.com/eamonxg/luci-theme-aurora.git
+https://github.com/A1EF/nfqws-openwrt.git
+https://github.com/remittor/zapret-openwrt.git
+https://github.com/Openwrt-Passwall/openwrt-passwall2.git

@@ -1,0 +1,56 @@
+# Use "make defconfig" to generate a complete .config file
+
+# Include Imagebuilder
+CONFIG_IB=y
+CONFIG_IB_STANDALONE=y
+CONFIG_TARGET_ROOTFS_INITRAMFS=n
+
+# QCN550x apjet01 board
+CONFIG_TARGET_ath79=y
+CONFIG_TARGET_ath79_generic=y
+CONFIG_TARGET_ath79_generic_DEVICE_asus_rt-ac59u=y
+
+CONFIG_PACKAGE_kmod-ath10k-ct=n
+CONFIG_PACKAGE_ath10k-firmware-qca9888-ct=n
+CONFIG_PACKAGE_kmod-ath10k=y
+CONFIG_PACKAGE_ath10k-firmware-qca9888=y
+
+# USB support
+CONFIG_PACKAGE_kmod-usb-net-rndis=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-ncm=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-mbim=y
+CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
+
+CONFIG_PACKAGE_kmod-usb-printer=y
+CONFIG_PACKAGE_kmod-usb-storage=y
+CONFIG_PACKAGE_luci-app-p910nd=y
+CONFIG_PACKAGE_p910nd=y
+
+# Add other apps
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-proto-wireguard=y
+CONFIG_PACKAGE_luci-app-wifischedule=y
+CONFIG_PACKAGE_luci-app-easymesh=n
+CONFIG_PACKAGE_luci-proto-batman-adv=y
+
+# Default to openssl instead of mbedtls
+CONFIG_PACKAGE_libustream-mbedtls=n
+CONFIG_PACKAGE_libustream-openssl=y
+CONFIG_PACKAGE_wpad-basic-mbedtls=n
+CONFIG_PACKAGE_wpad-openssl=y
+
+# 2025 optimization (deprecated high cpu pppoe and ipv6 to reduce spaces)
+CONFIG_PACKAGE_luci-proto-ipv6=n
+CONFIG_PACKAGE_luci-proto-ppp=n
+CONFIG_PACKAGE_firewall4=n
+CONFIG_PACKAGE_jansson=n
+CONFIG_PACKAGE_kmod-nft-fib=n
+CONFIG_PACKAGE_kmod-ppp=n
+CONFIG_PACKAGE_libmnl=n
+CONFIG_PACKAGE_libnftnl=n
+CONFIG_PACKAGE_nftables-json=n
+CONFIG_PACKAGE_odhcp6c=n
+CONFIG_PACKAGE_odhcpd-ipv6only=n
+CONFIG_PACKAGE_ppp=n
+CONFIG_PACKAGE_ucode-mod-uci=n
+CONFIG_PACKAGE_kmod-lib-crc-ccitt=y

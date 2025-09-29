@@ -1,0 +1,49 @@
+# Devices
+CONFIG_TARGET_airoha=y
+CONFIG_TARGET_airoha_en7523=y
+CONFIG_TARGET_airoha_en7523_DEVICE_vht_42x6=y
+
+# Quirks
+CONFIG_CCACHE=n
+CONFIG_DEVEL=n
+CONFIG_TARGET_MULTI_PROFILE=n
+CONFIG_TARGET_PER_DEVICE_ROOTFS=n
+CONFIG_IB=n
+CONFIG_IB_STANDALONE=n
+
+# EN7523 defaults
+CONFIG_FEED_luci=y
+CONFIG_FEED_packages=y
+CONFIG_FEED_routing=y
+CONFIG_FEED_telephony=y
+CONFIG_FEED_video=y
+CONFIG_PACKAGE_libiwinfo=y
+CONFIG_PACKAGE_libiwinfo-data=y
+CONFIG_PACKAGE_libncurses=y
+CONFIG_PACKAGE_omci-agent=y
+CONFIG_PACKAGE_rpcd=y
+CONFIG_PACKAGE_rpcd-mod-file=y
+CONFIG_PACKAGE_rpcd-mod-iwinfo=y
+CONFIG_PACKAGE_rpcd-mod-ucode=y
+CONFIG_PACKAGE_terminfo=y
+CONFIG_PACKAGE_u-boot-en7523_tplink_xx230v-v1=y
+CONFIG_PACKAGE_ucode-mod-log=y
+CONFIG_PACKAGE_ucode-mod-math=y
+CONFIG_PACKAGE_uhttpd=y
+CONFIG_PACKAGE_uhttpd-mod-ubus=y
+
+# Custom 
+CONFIG_PACKAGE_luci-app-gecoosac=n
+CONFIG_PACKAGE_luci-app-apcontroller=y
+CONFIG_PACKAGE_luci-app-mwan3=n
+CONFIG_PACKAGE_luci-app-tailscale=y
+CONFIG_PACKAGE_luci-app-upnp=y
+CONFIG_PACKAGE_luci-proto-wireguard=y
+CONFIG_PACKAGE_https_dns_proxy=y
+CONFIG_PACKAGE_adguardhome=n
+CONFIG_PACKAGE_nfqws=n
+CONFIG_PACKAGE_luci-app-zapret2=n
+CONFIG_PACKAGE_dnsmasq=n
+CONFIG_PACKAGE_dnsmasq-full=y
+CONFIG_PACKAGE_adblock-fast=y
+CONFIG_PACKAGE_luci-app-adblock-fast=y

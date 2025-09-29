@@ -1,0 +1,129 @@
+name: Build image
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your repository
+        uses: actions/checkout@v4
+
+      - name: Set up build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+          python3-setuptools rsync swig unzip zlib1g-dev file wget
+
+      - name: Clone OpenWrt source
+        uses: actions/checkout@v4
+        with:
+          repository: hdfla/openwrt-kn7981
+          ref: main
+          token: ${{ secrets.KNFLPAT }}
+          path: openwrt
+
+      # Use cachewrtbuild action for OpenWrt toolchain and build caching
+      - name: Cache OpenWrt build (cachewrtbuild)
+        uses: stupidloud/cachewrtbuild@main
+        with:
+          prefix: ${{ github.workspace }}/openwrt
+          # Optional: set mixkey to your target arch if you want separate caches per arch
+          mixkey: 'aarch64'
+
+      - name: Clone private files repository
+        uses: actions/checkout@v4
+        continue-on-error: true        # workflow won’t stop if this step fails
+        with:
+          repository: hdfla/embedded-files
+          ref: keenetic                    # branch or tag
+          token: ${{ secrets.KNFLPAT }}
+          path: private-files
+      - name: Copy private files into OpenWrt root
+        run: |
+          if [ -d private-files ]; then
+            # Create the target directory if it doesn’t exist
+            mkdir -p openwrt/files
+
+            # Copy everything except the .git folder
+            if [ -n "$(ls -A private-files | grep -v '^.git$')" ]; then
+              cp -a private-files/. openwrt/files/
+
+              # Generate the file list (exclude .git)
+              find private-files \
+                -not -path 'private-files/.git/*' \
+                -not -path 'private-files/.git' \
+                \( -type f -o -type d \) \
+                | sed 's|^private-files/||' \
+                | grep -v '^$' > /tmp/copied_priv_files_list
+
+              # If the list is empty (only .git existed), write "none"
+              if [ ! -s /tmp/copied_priv_files_list ]; then
+                echo "none, repository empty" > /tmp/copied_priv_files_list
+              fi
+            else
+              # Directory exists but contains only .git or is empty
+              echo "none, directory empty" > /tmp/copied_priv_files_list
+            fi
+          else
+            # Clone step failed or directory not present
+            echo "none, directory not present" > /tmp/copied_priv_files_list
+          fi
+          # Print copied files/ list
+          echo "===== Copied priv files/content ====="
+          cat /tmp/copied_priv_files_list
+
+      - name: Update feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configure build
+        run: |
+          set -e  # Exit on error for strict error handling
+          cd openwrt
+
+          # If a custom .config exists at the repo root, copy it in. Otherwise, warn and use default config.
+          if [ -f ../.config ]; then
+            cp ../.config .config
+            echo "Custom .config found and copied."
+          else
+            echo "No custom .config found at project root. Using OpenWrt default config."
+          fi
+
+          # Print first 20 lines of .config for confirmation and troubleshooting.
+          if [ -f .config ]; then
+            echo "Current .config (first 20 lines):"
+            head -20 .config
+          else
+            echo "Error: .config does not exist after copy. Exiting."
+            exit 1
+          fi
+
+          # Generate dependencies and fill in missing config options with defaults.
+          make defconfig
+
+          # Verify .config integrity after defconfig
+          if grep -q "CONFIG_TARGET" .config; then
+            echo ".config is valid and has target defined."
+          else
+            echo "Error: .config seems invalid (no CONFIG_TARGET found). Exiting."
+            exit 1
+          fi
+
+      - name: Build firmware
+        run: |
+          cd openwrt
+          make -j$(nproc) V=s
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-file
+          path: openwrt/bin/targets/

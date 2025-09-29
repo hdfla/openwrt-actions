@@ -1,0 +1,90 @@
+CONFIG_TARGET_ramips=y
+CONFIG_TARGET_ramips_mt7621=y
+
+#Use this for single device build
+# CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-3-pro is not set 
+
+#Use this for multiple device build
+CONFIG_TARGET_MULTI_PROFILE=y
+CONFIG_TARGET_PER_DEVICE_ROOTFS=y
+CONFIG_TARGET_DEVICE_ramips_mt7621_DEVICE_xiaomi_mi-router-3-pro=y
+CONFIG_TARGET_DEVICE_ramips_mt7621_DEVICE_xiaomi_mi-router-3-pro-spi=y
+CONFIG_TARGET_DEVICE_ramips_mt7621_DEVICE_xiaomi_mi-router-3g=y
+CONFIG_TARGET_DEVICE_ramips_mt7621_DEVICE_d-team_newifi-d2=y
+
+#UI UX
+# CONFIG_LUCI_LANG_zh-cn is not set
+# CONFIG_LUCI_LANG_vi is not set
+CONFIG_PACKAGE_luci-theme-argon-new=y
+CONFIG_PACKAGE_default-settings=y
+
+#Kernel 
+CONFIG_PACKAGE_kmod-usb-net-rndis=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-ncm=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-mbim=y
+CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
+
+CONFIG_PACKAGE_kmod-usb-printer=y
+
+#Userspace
+CONFIG_PACKAGE_p910nd=y
+CONFIG_PACKAGE_luci-app-p910nd=y
+CONFIG_PACKAGE_luci-app-mwan3=y
+
+#Replace ipv6helper to global odhcp and iptables
+CONFIG_PACKAGE_odhcpd=y
+# CONFIG_PACKAGE_ipv6helper is not set
+CONFIG_PACKAGE_luci-proto-ipv6=y
+CONFIG_PACKAGE_odhcp6c=y
+CONFIG_PACKAGE_ip6tables=y
+
+#Optimize storage by removing ssl as proprietary drivers do not need
+# CONFIG_PACKAGE_wget-ssl is not set
+# CONFIG_PACKAGE_libwolfssl is not set
+# CONFIG_PACKAGE_libmbedtls is not set
+# CONFIG_PACKAGE_libustream-openssl is not set
+# CONFIG_PACKAGE_libopenssl1.1 is not set
+# CONFIG_PACKAGE_libopenssl-conf is not set
+# CONFIG_WPA_WOLFSSL is not set
+# CONFIG_PACKAGE_wpad-basic-wolfssl is not set
+
+#Remove zram for storage spaces
+# CONFIG_PACKAGE_kmod-zram is not set
+# CONFIG_PACKAGE_zram-swap is not set
+
+#Remove chinese-related functions
+# CONFIG_PACKAGE_default-settings-chn is not set
+# CONFIG_PACKAGE_libipset is not set
+# CONFIG_PACKAGE_libmnl is not set
+# CONFIG_PACKAGE_luci-app-mwan3helper-chinaroute is not set
+# CONFIG_PACKAGE_luci-app-rclone_INCLUDE_rclone-ng is not set
+# CONFIG_PACKAGE_luci-app-rclone_INCLUDE_rclone-webui is not set
+# CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ChinaDNS_NG is not set
+# CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_IPT2Socks is not set
+# CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Libev_Client is not set
+# CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Libev_Client is not set
+# CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_NONE_Client is not set
+# CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Simple_Obfs is not set
+# CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Trojan is not set
+# CONFIG_PACKAGE_luci-i18n-base-zh-cn is not set
+# CONFIG_PACKAGE_luci-i18n-filetransfer-zh-cn is not set
+# CONFIG_PACKAGE_luci-i18n-firewall-zh-cn is not set
+# CONFIG_PACKAGE_luci-i18n-upnp-zh-cn is not set
+# CONFIG_PACKAGE_luci-app-turboacc-mtk_INCLUDE_PDNSD is not set
+# CONFIG_PACKAGE_pdnsd-alt is not set
+# CONFIG_PACKAGE_luci-app-filetransfer is not set
+# CONFIG_PACKAGE_shellsync is not set
+
+#Wireguard stuffs, this one need ssl so the rom MUST be 16M or higher
+# CONFIG_PACKAGE_kmod-crypto-kpp is not set
+# CONFIG_PACKAGE_kmod-crypto-lib-blake2s is not set
+# CONFIG_PACKAGE_kmod-crypto-lib-chacha20 is not set
+# CONFIG_PACKAGE_kmod-crypto-lib-chacha20poly1305 is not set
+# CONFIG_PACKAGE_kmod-crypto-lib-curve25519 is not set
+# CONFIG_PACKAGE_kmod-crypto-lib-poly1305 is not set
+# CONFIG_PACKAGE_kmod-udptunnel4 is not set
+# CONFIG_PACKAGE_kmod-udptunnel6 is not set
+# CONFIG_PACKAGE_kmod-wireguard is not set
+# CONFIG_PACKAGE_luci-app-wireguard is not set
+# CONFIG_PACKAGE_luci-proto-wireguard is not set
+# CONFIG_PACKAGE_wireguard-tools is not set

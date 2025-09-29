@@ -1,0 +1,211 @@
+name: Build image
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      openwrt-version:
+        description: 'Openwrt version'
+        required: true
+        type: choice
+        options:
+          - 24.10-mtk
+          - 21.02-mtk
+          - 18.06-mtk
+      branch:
+        description: Branch (leave default for upstream)
+        required: true
+        type: string
+        default: 'default'
+      usb_config:
+        description: 'USB configuration'
+        required: true
+        type: choice
+        options:
+          - USB
+          - No USB
+      hostname:
+        description: 'Hostname'
+        required: true
+        type: string
+        default: 'ImmortalWrt'
+      default_ip:
+        description: 'Default IP address'
+        required: true
+        type: string
+        default: '192.168.1.1'
+      luci_theme:
+        description: 'LuCI theme (18.06: argon-new only)'
+        required: true
+        type: choice
+        default: 'bootstrap'
+        options:
+          - bootstrap
+          - aurora
+          - argon
+      verbosity:
+        description: 'Debug'
+        required: true
+        type: choice
+        default: 'No'
+        options:
+          - 'Yes'
+          - 'No'
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your repository
+        uses: actions/checkout@v4
+
+      - name: Set up build dependencies (common)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install -y build-essential clang flex bison g++ gawk \
+          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+          python3-setuptools rsync swig unzip zlib1g-dev file wget
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+
+      - name: Install legacy dependencies (18.06 and below)
+        if: contains(github.event.inputs.openwrt-version, '18.06')
+        run: |
+          sudo -E apt-get -qq install -y subversion time
+          sudo add-apt-repository -y ppa:deadsnakes/ppa
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install -y python3.10 python3.10-distutils python3.10-dev
+          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+          sudo update-alternatives --set python3 /usr/bin/python3.10
+          python3 --version
+
+      - name: Clone OpenWrt source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ fromJSON('{"18.06-mtk":"hdfla/immortalwrt-mt7621-5.4","21.02-mtk":"hdfla/immortalwrt-mt798x-5.4","24.10-mtk":"hdfla/immortalwrt-mt798x-6.6"}')[github.event.inputs.openwrt-version] }}
+          ref: ${{ github.event.inputs.branch == 'default' && fromJSON('{"18.06-mtk":"main","21.02-mtk":"main","24.10-mtk":"openwrt-24.10-6.6"}')[github.event.inputs.openwrt-version] || github.event.inputs.branch }}
+          path: openwrt
+          token: ${{ secrets.IWRTPAT }}
+          fetch-depth: 1
+
+      # Use cachewrtbuild action for OpenWrt toolchain and build caching
+      - name: Cache OpenWrt build (cachewrtbuild)
+        uses: stupidloud/cachewrtbuild@main
+        with:
+          prefix: ${{ github.workspace }}/openwrt
+          # Optional: set mixkey to your target arch if you want separate caches per arch
+          mixkey: ''
+          ccache: 'false'
+          clean: 'false'
+
+      - name: Custom feeds, packages and files
+        run: |
+          set -e
+          cd openwrt
+          { cp ../feeds.conf . && echo "feeds.conf"; } || echo "none"
+          { mkdir -p package && while read url; do
+              folder="${url##*/}"; folder="${folder%.git}"
+              git clone "$url" "package/$folder"
+              echo "$folder"
+            done < ../packages.txt; } || echo "none"
+          { cp -r ../files . && find ../files -type f -o -type d | sed 's|^\.\./files/||' | grep -v '^$'; } || echo "none"
+
+      - name: Token injection (only for private feeds)
+        if: contains(github.event.inputs.openwrt-version, '18.06')
+        env:
+          GH_TOKEN: ${{ secrets.IWRTPAT }}
+        run: |
+          cd openwrt
+          sed -i 's|https://github.com/hdfla/luci-legacy.git|https://x-access-token:'"$GH_TOKEN"'@github.com/hdfla/luci-legacy.git|' feeds.conf.default
+          echo "Token injected into private feed(s)."
+
+      - name: Update feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Apply personalization
+        run: |
+          cd openwrt
+          VERSION="${{ github.event.inputs.openwrt-version }}"
+          NEW_IP="${{ github.event.inputs.default_ip }}"
+          OLD_IP_PATTERN='192.168.[0-9]\{1,3\}.1'
+          sed -i "s/$OLD_IP_PATTERN/$NEW_IP/g" package/base-files/files/bin/config_generate
+          HOSTNAME="${{ github.event.inputs.hostname }}"
+          sed -i "s/set system.@system\[-1\].hostname='[^']*'/set system.@system[-1].hostname='$HOSTNAME'/" package/base-files/files/bin/config_generate
+          [[ "$VERSION" == *"18.06"* ]] && find package/emortal -type f -exec sed -i '/V4UetPzk/d' {} \;
+          THEME="$([[ "$VERSION" == *"18.06"* ]] && echo "argon-new" || echo "${{ github.event.inputs.luci_theme }}")"
+          sed -i "s/luci-theme-bootstrap/luci-theme-$THEME/" feeds/luci/collections/luci/Makefile
+          echo "===== Personalization: IP=$NEW_IP, Hostname=$HOSTNAME, Theme=$THEME ====="
+
+      - name: Configure build
+        run: |
+          set -e
+          cd openwrt
+          VERSION="${{ github.event.inputs.openwrt-version }}"
+          USB="${{ github.event.inputs.usb_config == 'USB' && '-usb' || '' }}"
+          CONFIG_FILE="../config-${VERSION}${USB}"
+          test -f "$CONFIG_FILE" || { echo "Error: Config file '$CONFIG_FILE' not found!"; exit 1; }
+          mv "$CONFIG_FILE" .config
+          echo "Current .config (first 20 lines):"
+          head -20 .config
+          make defconfig
+          grep -q "CONFIG_TARGET" .config || { echo "Error: .config invalid (no CONFIG_TARGET)."; exit 1; }
+          echo ".config is valid."
+
+      - name: Build firmware
+        run: |
+          cd openwrt
+          DEBUG="${{ github.event.inputs.verbosity == 'Yes' && 'V=s' || '' }}"
+          make -j$(nproc) $DEBUG
+          echo "DEVICE_NAME=_mediatek_filogic" >> $GITHUB_ENV
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+      - name: Check space usage
+        run: df -hT
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-firmware
+          path: openwrt/bin/targets/
+
+      - name: Organize files
+        id: organize
+        run: |
+          cd openwrt/bin/targets/*/*
+          rm -rf packages
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+
+      - name: Upload firmware directory
+        uses: actions/upload-artifact@main
+        with:
+          name: ImmortalWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          touch release.txt
+          echo "## ImmortalWrt Release $(date +"%Y.%m.%d-%H:%M")" >> release.txt
+          echo "- squashfs-sysupgrade.bin" >> release.txt
+          echo "  -md5: $(md5sum ${{ env.FIRMWARE }}/*squashfs-sysupgrade.bin | cut -d" " -f1)" >> release.txt
+          echo "  -sha256: $(cat ${{ env.FIRMWARE }}/sha256sums | grep -oE ".*squashfs-sysupgrade.bin" | grep -oE "\w{64}")" >> release.txt        
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v1
+        if: steps.tag.outputs.status == 'success' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          body_path: release.txt
+          files: |
+            ${{ env.FIRMWARE }}/*.bin
+            openwrt/.config

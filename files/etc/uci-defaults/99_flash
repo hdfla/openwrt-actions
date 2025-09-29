@@ -1,0 +1,48 @@
+#!/bin/sh
+
+python /etc/generator.py /etc/uconf.bin
+
+mac=`sh /etc/mac.sh -r lan`
+echo $mac | grep -q '24 0F 5E [0-1][0-9]'
+sh /etc/mac.sh -w wan $mac
+
+dd if=/tmp/Factory.backup of=/etc/eeprom.bin bs=1 skip=6 count=4 seek=12 conv=notrunc
+dd if=/tmp/Factory.backup of=/etc/eeprom.bin bs=1 skip=12 count=4 seek=6 conv=notrunc
+
+# upd ubi
+mtd erase Storage_A
+mtd erase Storage_B
+mtd erase Firmware_2
+
+mtd erase u-boot-env
+mtd write /etc/env.bin u-boot-env
+
+# upd sn
+mtd erase U-Config
+mtd write /etc/uconf_*.bin U-Config
+
+# rootfs
+mtd erase Firmware_1
+mtd write /etc/root.squashfs Firmware_1
+
+mtd erase U-State
+mtd write /etc/ustate.bin U-State
+
+# kernel
+mtd erase hole
+mtd write /etc/kernel.bin hole
+
+# real res eeprom
+mtd erase U-Config_res
+mtd write /etc/eeprom.bin U-Config_res
+
+# real eeprom
+mtd erase RF-EEPROM_res
+mtd write /etc/eeprom.bin RF-EEPROM_res
+
+# KEEP
+mtd write /etc/eeprom.bin RF-EEPROM
+
+sleep 5
+
+reboot

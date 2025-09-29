@@ -1,0 +1,121 @@
+name: Build OpenWrt Firmware
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your repository
+        uses: actions/checkout@v4
+
+      - name: Set up build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+          python3-setuptools rsync swig unzip zlib1g-dev file wget
+
+      - name: Clone OpenWrt source
+        uses: actions/checkout@v4
+        with:
+          repository: hdfla/openwrt-flasher
+          ref: main
+          path: openwrt
+
+      # Use cachewrtbuild action for OpenWrt toolchain and build caching
+      - name: Cache OpenWrt build (cachewrtbuild)
+        uses: stupidloud/cachewrtbuild@main
+        with:
+          prefix: ${{ github.workspace }}/openwrt
+          # Optional: set mixkey to your target arch if you want separate caches per arch
+          mixkey: 'aarch64'
+
+      - name: Copy custom FEEDS and FILES
+        run: |
+          set -e  # Exit on error for strict error handling
+
+          # Copy custom feeds.conf if it exists
+          if [ -f feeds.conf ]; then
+            cp feeds.conf ./openwrt/feeds.conf
+            echo "feeds.conf" > /tmp/copied_feeds_list
+          else
+            echo "none" > /tmp/copied_feeds_list
+          fi
+
+          # Copy your FILES directory into OpenWrt root (if exists)
+          if [ -d ./files ]; then
+            cp -r ./files ./openwrt/files
+            # List all files and directories (recursively) inside ./files/
+            find ./files -type f -o -type d | sed 's|^\./files/||' | grep -v '^$' > /tmp/copied_files_list
+            if [ ! -s /tmp/copied_files_list ]; then
+              # If files/ exists but is empty, print "none"
+              echo "none" > /tmp/copied_files_list
+            fi
+          else
+            echo "none" > /tmp/copied_files_list
+          fi
+
+          # Print copied feeds.conf status
+          echo "===== Copied feeds.conf ====="
+          cat /tmp/copied_feeds_list
+
+          # Print copied files/ list
+          echo "===== Copied files/ content ====="
+          cat /tmp/copied_files_list
+
+          # End of copy/print operation
+
+      - name: Update feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configure build
+        run: |
+          set -e  # Exit on error for strict error handling
+          cd openwrt
+
+          # If a custom .config exists at the repo root, copy it in. Otherwise, warn and use default config.
+          if [ -f ../.config ]; then
+            cp ../.config .config
+            echo "Custom .config found and copied."
+          else
+            echo "No custom .config found at project root. Using OpenWrt default config."
+          fi
+
+          # Print first 20 lines of .config for confirmation and troubleshooting.
+          if [ -f .config ]; then
+            echo "Current .config (first 20 lines):"
+            head -20 .config
+          else
+            echo "Error: .config does not exist after copy. Exiting."
+            exit 1
+          fi
+
+          # Generate dependencies and fill in missing config options with defaults.
+          make defconfig
+
+          # Verify .config integrity after defconfig
+          if grep -q "CONFIG_TARGET" .config; then
+            echo ".config is valid and has target defined."
+          else
+            echo "Error: .config seems invalid (no CONFIG_TARGET found). Exiting."
+            exit 1
+          fi
+
+      - name: Build firmware
+        run: |
+          cd openwrt
+          make -j$(nproc) V=s
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-firmware
+          path: openwrt/bin/targets/

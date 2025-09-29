@@ -1,0 +1,76 @@
+name: Build image
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      soc:
+        description: 'SoC'
+        required: true
+        default: 'mt7981'
+        type: choice
+        options: [mt7981, mt7986]
+      board:
+        description: 'Board'
+        required: true
+        default: 'rfb'
+        type: string
+      multilayout:
+        description: 'Multi-layout'
+        required: true
+        default: 'no'
+        type: choice
+        options: ['yes', 'no']
+      branch:
+        description: 'Branch'
+        required: true
+        default: 'master'
+        type: string
+      extra_nand:
+        description: 'Extra NAND'
+        required: false
+        default: 'none'
+        type: choice
+        options: ['none', 'heyangtek']
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your repository
+        uses: actions/checkout@v4
+
+      - name: Set up build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt install gcc-aarch64-linux-gnu build-essential flex bison \
+          libssl-dev device-tree-compiler qemu-user-static
+
+      - name: Clone source
+        uses: actions/checkout@v4
+        with:
+          repository: hdfla/bl-mt798x
+          ref: ${{ inputs.branch }}
+          token: ${{ secrets.PWTXPAT }}
+          path: blmt798x
+
+      - name: Patch ATF for HeyangTek
+        if: github.event.inputs.extra_nand == 'heyangtek'
+        run: |
+          for f in blmt798x/atf-*/plat/mediatek/apsoc_common/drivers/spi_nand/mtk_spi_nand.c blmt798x/atf-*/drivers/mtd/nand/spi_nand.c; do [ -f "$f" ] || continue; grep -qE '^[[:space:]]*#(define|ifdef|ifndef)[[:space:]]+ENABLE_HEYANGTEK_HYF1GQ4UDACAE' "$f" || sed -i "$(grep -nE '^[[:space:]]*#[[:space:]]*define[[:space:]]+SPI_NAND_MEMORG_' "$f" | tail -1 | cut -d: -f1)a #define ENABLE_HEYANGTEK_HYF1GQ4UDACAE" "$f"; done
+
+      - name: Build artifacts
+        run: |
+          cd blmt798x
+          SOC=${{ inputs.soc }} \
+          BOARD=${{ inputs.board }} \
+          MULTI_LAYOUT=${{ inputs.multilayout == 'yes' && '1' || '0' }} \
+          ./build.sh
+
+      - name: Upload files
+        uses: actions/upload-artifact@v4
+        with:
+          name: bl-mt798x
+          path: blmt798x/output

@@ -1,0 +1,4 @@
+https://github.com/lwb1978/openwrt-gecoosac.git
+https://github.com/hdfla/luci-app-autoreboot.git
+https://github.com/eamonxg/luci-theme-aurora.git
+https://github.com/FUjr/QModem.git

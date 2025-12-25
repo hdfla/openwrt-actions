@@ -100,7 +100,6 @@ jobs:
         run: |
           set -e  # Exit on error for strict error handling
           cd openwrt
-          mv ../.config-${{ github.event.inputs.usb_config == 'USB' && 'usb' || 'nousb' }} .config
 
           # Print first 20 lines of .config for confirmation and troubleshooting.
           if [ -f .config ]; then

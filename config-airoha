@@ -1,7 +1,11 @@
 # Devices
 CONFIG_TARGET_airoha=y
 CONFIG_TARGET_airoha_en7523=y
+
 CONFIG_TARGET_airoha_en7523_DEVICE_vht_42x6=y
+CONFIG_PACKAGE_u-boot-en7523_vht_42x6=y
+CONFIG_TARGET_airoha_en7523_DEVICE_ksb_7523gpontest=y
+CONFIG_PACKAGE_u-boot-en7523_ksb_7523gpontest=y
 
 # Quirks
 CONFIG_CCACHE=n
